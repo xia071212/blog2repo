@@ -2230,7 +2230,7 @@ knitr::kable(macro_checks)</code></pre>
 </table>
 </div>
 <div id="combine-daily-yields-with-policy-markers" class="section level1">
-<h1>11. Combine daily yields with policy markers</h1>
+<h1>12. Combine daily yields with policy markers</h1>
 <p>Join on announcement dates. Empty event fields mean no rate-change
 announcement that day.</p>
 <pre class="r"><code>stopifnot(all(events$announcement_date %in% yields$date))
@@ -2333,7 +2333,7 @@ knitr::kable(
 </table>
 </div>
 <div id="calculate-announcement-day-yield-changes" class="section level1">
-<h1>12. Calculate announcement-day yield changes</h1>
+<h1>13. Calculate announcement-day yield changes</h1>
 <p>Subtract the previous Treasury observation and multiply by 100 to
 express each announcement-day change in basis points.</p>
 <pre class="r"><code>yield_changes &lt;- yields |&gt;
@@ -2416,7 +2416,7 @@ knitr::kable(response_summary, digits = 1)</code></pre>
 </table>
 </div>
 <div id="graphic-1-yield-levels-across-the-policy-cycle" class="section level1">
-<h1>13. Graphic 1: Yield levels across the policy cycle</h1>
+<h1>14. Graphic 2: Yield levels across the policy cycle</h1>
 <p>Three curves show daily yield levels. Vertical lines mark
 announcements; the top labels show the policy adjustment in basis
 points.</p>
@@ -2465,7 +2465,7 @@ cutting cycle, the 2-year yield declined more than the 10- and 30-year
 yields, while the long end remained comparatively elevated.</p>
 </div>
 <div id="graphic-2-policy-rate-inflation-and-unemployment" class="section level1">
-<h1>14. Graphic 2: Policy rate, inflation, and unemployment</h1>
+<h1>11. Graphic 1: Policy rate, inflation, and unemployment</h1>
 <p>The target-range midpoint summarizes the stance of monetary policy.
 Plotting it with inflation and unemployment makes the timing clearer:
 policy responds to the economy, and macroeconomic outcomes adjust with a
