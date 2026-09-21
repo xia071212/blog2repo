@@ -2,6 +2,8 @@
 
 This folder reproduces the analysis for **One Policy, Two Mandates, Three Treasury Reactions**.
 
+[Read the replication guide as a webpage](https://xia071212.github.io/blog2repo/replication-guide.html).
+
 ## Structure
 
 - `code/` contains the complete R Markdown analysis and the generated R script.
