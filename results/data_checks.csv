@@ -1,0 +1,3 @@
+"dataset","observations","first_date","last_date","missing_yield_2y_pct","missing_yield_10y_pct","missing_yield_30y_pct","missing_inflation","missing_unemployment"
+"Daily Treasury yields",1178,2022-01-03,2026-09-18,0,0,0,NA,NA
+"Monthly macro indicators",56,2022-01-01,2026-08-01,NA,NA,NA,1,1
