@@ -4,7 +4,7 @@ Can Fed interest-rate policy balance inflation and employment, and do Treasury y
 
 ## Data and the role of scraping
 
-The analysis uses saved public documents in `data/raw/`. `results/source_log.csv` records the exact source URLs, snapshot paths, formats, and SHA256 fingerprints.
+The analysis uses saved public documents in `data/raw/`. These HTML files are source-data snapshots required by the scraper, not rendered reports. `results/source_log.csv` records the 26 parsed documents’ exact source URLs, snapshot paths, formats, and SHA256 fingerprints. Source columns in the output datasets trace observations back to these snapshots.
 
 | Source and saved files | Extracted information | Use |
 |---|---|---|
@@ -39,7 +39,9 @@ The figures describe associations. They do not isolate policy surprises or causa
 | `announcement_day_yield_changes.csv`, `yield_response_summary.csv`, `yield_responses.md`, `announcement_day_yield_changes.png` | Absolute announcement-day changes by maturity |
 | `data_checks.csv`, `source_log.csv`, `output_manifest.csv`, `session_info.txt` | Sample checks, document lineage, output fingerprints, and the actual R environment |
 
-All four article tables are generated from the analysis objects. The website keeps deployment copies of these Markdown tables and the three figures. `PROVENANCE.md` gives additional lineage details. The [web replication guide](https://xia071212.github.io/blog2repo/replication-guide.html) presents this same documentation; the R script is the sole analysis entry point. The blog’s decorative illustration is maintained in the website repository and is not a statistical output.
+All four article tables are generated from the analysis objects. The website keeps deployment copies of these Markdown tables and the three figures. The R script is the sole analysis entry point. The blog’s decorative illustration is maintained in the website repository and is not a statistical output.
+
+The code checks dates, duplicates, numeric conversion, missing values, statement direction, and announcement joins. Figure legend order is explicit so repeated runs preserve the original presentation.
 
 ## Reproduce in RStudio
 
