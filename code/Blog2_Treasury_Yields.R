@@ -1,36 +1,8 @@
-#' ---
-#' title: "Fed Policy, the Dual Mandate, and Treasury Yield Responses"
-#' author: "Yuting Xia"
-#' output:
-#'   html_document:
-#'     toc: true
-#'     toc_float: true
-#'     code_folding: show
-#'     self_contained: true
-#' ---
-#' 
-#' # Question
-#' 
-#' **Since 2022, did inflation fall without a major deterioration in employment as the Federal Reserve changed rates, and did policy announcements move shorter-maturity Treasury yields more than longer-maturity yields?**
-#' 
-#' The Federal Reserve pursues price stability and maximum employment, while tighter policy can create a trade-off between them. This analysis follows the policy cycle from inflation and unemployment to the response of 2-, 10-, and 30-year Treasury yields.
-#' 
-#' ```text
-#' Official public pages
-#'          |
-#'        rvest
-#'          |
-#' Extract yields, policy events, CPI, and unemployment
-#'          |
-#' Clean dates and numeric fields
-#'          |
-#' Measure yield changes on announcement dates
-#'          |
-#' Three figures + saved results
-#' ```
-#' 
-## ----setup, include=FALSE-----------------------------------------------------
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+# Blog 2 replication: run this script to rebuild results from saved snapshots.
+# Yields are percentages; daily changes are basis points, not bond returns.
+# 1. Setup: packages, paths, and output directories
+# ------------------------------------------------------------------------
+set.seed(6400)
 
 library(rvest)
 library(dplyr)
@@ -39,36 +11,24 @@ library(stringr)
 library(lubridate)
 library(ggplot2)
 
-# Support both rendering this document and running the generated R script.
+# Resolve paths when run with Rscript, Source in RStudio, or from the project root.
 script_arg <- grep("^--file=", commandArgs(), value = TRUE)
-script_arg <- script_arg[file.exists(sub("^--file=", "", script_arg))]
-script_dir <- if (length(script_arg)) {
-  dirname(normalizePath(sub("^--file=", "", script_arg[1])))
-} else {
+source_files <- unlist(lapply(sys.frames(), function(frame) frame$ofile))
+script_path <- if (length(script_arg)) sub("^--file=", "", script_arg[1]) else
+  if (length(source_files)) tail(source_files, 1) else NA_character_
+script_path <- gsub("~+~", " ", script_path, fixed = TRUE)
+project_dir <- if (!is.na(script_path)) dirname(dirname(normalizePath(script_path))) else
   normalizePath(".")
-}
-project_candidates <- unique(c(dirname(script_dir), script_dir, normalizePath(".")))
-project_match <- project_candidates[
-  file.exists(file.path(project_candidates, "code", "Blog2_Treasury_Yields.Rmd")) |
-    file.exists(file.path(project_candidates, "Blog2_Treasury_Yields.Rmd"))
-]
-if (!length(project_match)) {
-  stop("Run from the blog2_analysis folder or pass the generated R script path.")
-}
-project_dir <- project_match[1]
+stopifnot(file.exists(file.path(project_dir, "code", "Blog2_Treasury_Yields.R")))
 raw_dir <- file.path(project_dir, "data", "raw")
-result_dir <- file.path(project_dir, "results")
+result_dir <- Sys.getenv("BLOG2_RESULTS_DIR", unset = file.path(project_dir, "results"))
 dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
 options(timeout = 120)
 source_log <- list()
 
-#' 
-#' # 1. Choose the public pages
-#' 
-#' Treasury supplies daily yields, the Federal Reserve supplies policy records, and the Bureau of Labor Statistics supplies monthly CPI and unemployment. The sample cutoff is fixed for reproducibility.
-#' 
-## ----choose-pages-------------------------------------------------------------
+# 2. Read and clean data: fixed sample and official source URLs
+# ------------------------------------------------------------------------
 sample_start <- as.Date("2022-01-01")
 sample_end <- as.Date("2026-09-19")
 
@@ -87,14 +47,8 @@ calendar_url <- "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
 unemployment_url <- "https://data.bls.gov/timeseries/LNS14000000"
 cpi_url <- "https://data.bls.gov/timeseries/CUSR0000SA0"
 
-treasury_url(2026)
-
-#' 
-#' # 2. Read and preserve the page
-#' 
-#' `read_html()` retrieves and parses each document. Saved snapshots avoid repeated requests, which are spaced two seconds apart.
-#' 
-## ----read-page----------------------------------------------------------------
+# 2a. Parse saved public pages; request only missing snapshots
+# ------------------------------------------------------------------------
 read_page <- function(address, filename, format = "HTML") {
   snapshot <- file.path(raw_dir, filename)
 
@@ -118,16 +72,8 @@ read_page <- function(address, filename, format = "HTML") {
 
 page <- read_page(treasury_url(2026), "treasury_2026.html")
 
-page |>
-  html_element("title") |>
-  html_text2()
-
-#' 
-#' # 3. Find the yield table
-#' 
-#' These observations sit in tables. Match column names rather than assuming the first table is correct.
-#' 
-## ----find-table---------------------------------------------------------------
+# 2b. Identify the Treasury table by its required columns
+# ------------------------------------------------------------------------
 tables <- page |>
   html_elements("table") |>
   html_table(fill = TRUE)
@@ -140,16 +86,8 @@ matches <- vapply(
 )
 stopifnot(sum(matches) == 1)
 
-tables[[which(matches)]] |>
-  select(all_of(required_columns)) |>
-  head()
-
-#' 
-#' # 4. Extract the three recent yield series
-#' 
-#' Repeat the same extraction for 2024–2026. Keep the source document attached to each row.
-#' 
-## ----extract-yields-----------------------------------------------------------
+# 2c. Extract recent Treasury yields
+# ------------------------------------------------------------------------
 extract_year <- function(year) {
   filename <- paste0("treasury_", year, ".html")
   page <- read_page(treasury_url(year), filename)
@@ -171,14 +109,9 @@ extract_year <- function(year) {
 }
 
 recent_yields <- bind_rows(lapply(2024:2026, extract_year))
-head(recent_yields)
 
-#' 
-#' # 5. Add the historical archive
-#' 
-#' Treasury stores 2022–2023 in a static XML archive, whose named fields require different selectors from recent HTML tables.
-#' 
-## ----extract-archive----------------------------------------------------------
+# 2d. Extract named fields from the historical XML archive
+# ------------------------------------------------------------------------
 archive <- read_page(
   archive_url,
   "treasury_2020_2023_archive.html",
@@ -200,14 +133,9 @@ historical_yields <- tibble(
   yield_30y_pct = archive_field("d:bc_30year"),
   yield_source = "data/raw/treasury_2020_2023_archive.html"
 )
-head(historical_yields)
 
-#' 
-#' # 6. Clean and check the yields
-#' 
-#' Convert text into dates and numbers without replacing missing values. Yields are percentages, not bond returns.
-#' 
-## ----clean-yields-------------------------------------------------------------
+# 2e. Convert dates and numbers; reject duplicates and malformed values
+# ------------------------------------------------------------------------
 clean_number <- function(x) {
   x <- str_squish(as.character(x))
   x[x %in% c("", ".", "N/A", "NA")] <- NA_character_
@@ -230,14 +158,9 @@ yield_checks <- yields |>
     last_date = max(date),
     across(ends_with("_pct"), ~ sum(is.na(.x)), .names = "missing_{.col}")
   )
-knitr::kable(yield_checks)
 
-#' 
-#' # 7. Extract all policy rate changes
-#' 
-#' The Fed's history table gives rate changes and **effective dates**; the preceding heading identifies the year.
-#' 
-## ----policy-changes-----------------------------------------------------------
+# 2f. Extract rate changes and effective dates from policy-history tables
+# ------------------------------------------------------------------------
 policy_page <- read_page(policy_url, "fed_openmarket.html")
 policy_tables <- html_elements(policy_page, "table")
 
@@ -273,14 +196,9 @@ changes <- policy_history |>
 
 stopifnot(!anyNA(changes$effective_date), !anyDuplicated(changes$effective_date),
           !anyNA(changes$change_bp))
-knitr::kable(changes |> select(effective_date, decision, change_bp))
 
-#' 
-#' # 8. Find the corresponding announcements
-#' 
-#' Extract statement links and match each effective date to one preceding statement. The seven-day limit only connects the two official records.
-#' 
-## ----announcement-links-------------------------------------------------------
+# 2g. Extract statement links; match within seven days before effectiveness
+# ------------------------------------------------------------------------
 calendar <- read_page(calendar_url, "fed_calendar.html")
 links <- calendar |>
   html_elements("a") |>
@@ -303,12 +221,8 @@ find_statement <- function(effective_date) {
 matched_statements <- bind_rows(lapply(changes$effective_date, find_statement))
 changes <- bind_cols(changes, matched_statements)
 
-#' 
-#' # 9. Read and verify each statement
-#' 
-#' Read the date printed on the announcement itself and verify whether its text says raise or lower.
-#' 
-## ----verify-announcements-----------------------------------------------------
+# 2h. Verify printed publication dates and the direction in decision text
+# ------------------------------------------------------------------------
 read_statement <- function(i) {
   filename <- paste0("fed_statement_", format(changes$link_date[i], "%Y%m%d"), ".html")
   page <- read_page(changes$statement_url[i], filename)
@@ -346,14 +260,9 @@ events <- bind_cols(changes, verified) |>
 
 stopifnot(!anyDuplicated(events$announcement_date),
           all(events$announcement_date <= events$effective_date))
-knitr::kable(events |> select(announcement_date, effective_date, decision, change_bp))
 
-#' 
-#' # 10. Extract inflation and unemployment
-#' 
-#' Convert the monthly, seasonally adjusted CPI index into a 12-month percentage change, then compare it with unemployment.
-#' 
-## ----macro-data---------------------------------------------------------------
+# 2i. Read monthly CPI and unemployment; calculate twelve-month inflation
+# ------------------------------------------------------------------------
 extract_bls_series <- function(address, filename, value_name) {
   page <- read_page(address, filename)
   tables <- html_table(page, fill = TRUE)
@@ -405,33 +314,17 @@ macro_checks <- macro |>
     missing_inflation = sum(is.na(inflation_yoy_pct)),
     missing_unemployment = sum(is.na(unemployment_pct))
   )
-knitr::kable(macro_checks)
 
-#' 
-#' # 11. Combine daily yields with policy markers
-#' 
-#' Join on announcement dates. Empty event fields mean no rate-change announcement that day.
-#' 
-## ----combine-data-------------------------------------------------------------
+# 3. Merge daily yields with verified announcement records
+# ------------------------------------------------------------------------
 stopifnot(all(events$announcement_date %in% yields$date))
 daily <- yields |>
   left_join(events, by = c("date" = "announcement_date")) |>
   arrange(date)
 stopifnot(nrow(daily) == nrow(yields), sum(!is.na(daily$decision)) == nrow(events))
 
-knitr::kable(
-  daily |>
-    filter(!is.na(decision)) |>
-    select(date, yield_2y_pct, yield_10y_pct, yield_30y_pct, decision, change_bp) |>
-    head(8)
-)
-
-#' 
-#' # 12. Calculate announcement-day yield changes
-#' 
-#' Subtract the previous Treasury observation and multiply by 100 to express each announcement-day change in basis points.
-#' 
-## ----yield-changes------------------------------------------------------------
+# 4. Analyze announcement-day changes and summarize by maturity
+# ------------------------------------------------------------------------
 yield_changes <- yields |>
   arrange(date) |>
   mutate(
@@ -468,14 +361,9 @@ response_summary <- event_moves |>
   )
 
 stopifnot(!anyNA(event_moves$yield_change_bp))
-knitr::kable(response_summary, digits = 1)
 
-#' 
-#' # 13. Graphic 1: Yield levels across the policy cycle
-#' 
-#' Three curves show daily yield levels. Vertical lines mark announcements; the top labels show the policy adjustment in basis points.
-#' 
-## ----daily-plot, fig.width=12, fig.height=6.8, out.width='100%'---------------
+# 5a. Draw and save daily yield levels
+# ------------------------------------------------------------------------
 long <- yields |>
   pivot_longer(ends_with("_pct"), names_to = "tenor", values_to = "yield_pct") |>
   mutate(tenor = factor(tenor,
@@ -509,18 +397,14 @@ yield_plot <- ggplot(long, aes(date, yield_pct, colour = tenor)) +
         plot.title = element_text(face = "bold"),
         plot.caption = element_text(hjust = 0))
 
+yield_plot <- yield_plot + guides(colour = guide_legend(order = 1),
+                                  linetype = guide_legend(order = 2))
+
 ggsave(file.path(result_dir, "daily_yields_with_events.png"), yield_plot,
        width = 14, height = 7.4, dpi = 160, bg = "white")
-if (knitr::is_html_output()) print(yield_plot)
 
-#' 
-#' During the 2022–2023 tightening cycle, all three yields rose, but the 2-year yield increased most sharply and spent much of the period above the longer yields. That inversion indicates that investors expected tight policy to weigh on future growth and rates. During the later cutting cycle, the 2-year yield declined more than the 10- and 30-year yields, while the long end remained comparatively elevated.
-#' 
-#' # 14. Graphic 2: Policy rate, inflation, and unemployment
-#' 
-#' The target-range midpoint summarizes the stance of monetary policy. Plotting it with inflation and unemployment makes the timing clearer: policy responds to the economy, and macroeconomic outcomes adjust with a lag.
-#' 
-## ----macro-plot, fig.width=12, fig.height=6.3, out.width='100%'---------------
+# 5b. Draw and save policy, inflation, and unemployment
+# ------------------------------------------------------------------------
 macro_long <- macro |>
   select(date, inflation_yoy_pct, unemployment_pct) |>
   pivot_longer(-date, names_to = "indicator", values_to = "percent") |>
@@ -605,18 +489,14 @@ macro_plot <- ggplot() +
     plot.caption = element_text(hjust = 0)
   )
 
+macro_plot <- macro_plot + guides(colour = guide_legend(order = 2),
+                                  shape = guide_legend(order = 1))
+
 ggsave(file.path(result_dir, "inflation_unemployment_with_events.png"), macro_plot,
        width = 14, height = 6.8, dpi = 160, bg = "white")
-if (knitr::is_html_output()) print(macro_plot)
 
-#' 
-#' The first hike came while CPI inflation was still climbing, so an immediate inverse relationship should not be expected. Inflation peaked at `r sprintf("%.1f", max(macro$inflation_yoy_pct, na.rm = TRUE))` percent in `r format(macro$date[which.max(macro$inflation_yoy_pct)], "%B %Y")` and then declined as the target rate remained restrictive. Unemployment stayed close to its low starting level through the hiking phase and rose gradually before the first cut. The sequence is consistent with a cumulative, lagged policy effect, but it cannot show what inflation or employment would have been without those decisions.
-#' 
-#' # 15. Graphic 3: Yield responses by maturity
-#' 
-#' The final figure compares the magnitude of one-day changes across maturities. Each point is one announcement; the box summarizes the distribution across all announcements.
-#' 
-## ----response-plot, fig.width=12, fig.height=6.3, out.width='100%'------------
+# 5c. Draw and save absolute announcement-day changes
+# ------------------------------------------------------------------------
 response_plot <- ggplot(
   event_moves,
   aes(tenor, absolute_change_bp, colour = tenor)
@@ -648,18 +528,14 @@ response_plot <- ggplot(
     plot.caption = element_text(hjust = 0)
   )
 
+response_plot <- response_plot + guides(colour = guide_legend(order = 1),
+                                        shape = guide_legend(order = 2))
+
 ggsave(file.path(result_dir, "announcement_day_yield_changes.png"), response_plot,
        width = 14, height = 6.8, dpi = 160, bg = "white")
-if (knitr::is_html_output()) print(response_plot)
 
-#' 
-#' The maturity comparison is much clearer in changes than in levels. Across `r nrow(events)` announcements, the median absolute moves were `r sprintf("%.1f", response_summary$median_absolute_change_bp[response_summary$tenor == "2-year"])`, `r sprintf("%.1f", response_summary$median_absolute_change_bp[response_summary$tenor == "10-year"])`, and `r sprintf("%.1f", response_summary$median_absolute_change_bp[response_summary$tenor == "30-year"])` basis points. The declining pattern shows that announcement-day yield repricing was concentrated at the front end of the curve.
-#' 
-#' # 16. Save the results and their sources
-#' 
-#' Save the cleaned datasets, figures, source register, and file fingerprints needed to reproduce the analysis.
-#' 
-## ----save-results-------------------------------------------------------------
+# 6. Save datasets, checks, and source records
+# ------------------------------------------------------------------------
 write.csv(daily, file.path(result_dir, "daily_yields_with_events.csv"), row.names = FALSE, na = "")
 write.csv(events, file.path(result_dir, "policy_events_rvest.csv"), row.names = FALSE, na = "")
 write.csv(macro, file.path(result_dir, "macro_conditions.csv"), row.names = FALSE, na = "")
@@ -674,13 +550,52 @@ write.csv(data_checks, file.path(result_dir, "data_checks.csv"), row.names = FAL
 source_register <- bind_rows(source_log)
 write.csv(source_register, file.path(result_dir, "source_log.csv"), row.names = FALSE)
 
+# 7. Export the four article tables from the same analysis objects
+# ------------------------------------------------------------------------
+save_table <- function(x, filename, digits = 1) {
+  writeLines(as.character(knitr::kable(x, format = "pipe", digits = digits)),
+             file.path(result_dir, filename))
+}
+save_table(events |> transmute(
+  Announcement = format(announcement_date, "%b. %d, %Y"), Decision = decision,
+  `Change (bp)` = sprintf("%+d", as.integer(change_bp)),
+  `New target range (%)` = sprintf("%.2f–%.2f", target_lower_pct, target_upper_pct)
+), "policy_schedule.md")
+milestone_dates <- as.Date(c("2022-03-01", "2023-07-01", "2024-09-01", "2026-08-01"))
+milestones <- macro[match(milestone_dates, macro$date), ]
+month_ends <- ceiling_date(milestone_dates, "month") - days(1)
+midpoints <- vapply(month_ends, function(d) {
+  row <- policy_history |> filter(effective_date <= d) |> slice_tail(n = 1)
+  (row$target_lower_pct + row$target_upper_pct) / 2
+}, numeric(1))
+save_table(data.frame(
+  Milestone = c("First hike", "Last hike before easing", "First cut", "Latest macro data"),
+  Month = format(milestone_dates, "%b. %Y"),
+  `Policy midpoint (%)` = sprintf("%.2f", floor(midpoints * 100 + 0.5) / 100),
+  `CPI inflation (%)` = sprintf("%.1f", milestones$inflation_yoy_pct),
+  `Unemployment (%)` = sprintf("%.1f", milestones$unemployment_pct), check.names = FALSE
+), "macro_milestones.md")
+yield_summary <- bind_rows(lapply(c("2y", "10y", "30y"), function(tenor) {
+  values <- yields[[paste0("yield_", tenor, "_pct")]]
+  data.frame(Maturity = sub("y", "-year", tenor), `Start (%)` = values[1],
+    `Sample peak (%)` = max(values), `Peak date` = format(yields$date[which.max(values)], "%b. %d, %Y"),
+    `Latest (%)` = tail(values, 1), check.names = FALSE)
+}))
+save_table(yield_summary, "yield_levels.md", digits = 2)
+save_table(response_summary |> transmute(
+  Maturity = tenor, Meetings = meetings, `Mean absolute move (bp)` = mean_absolute_change_bp,
+  `Median absolute move (bp)` = median_absolute_change_bp,
+  `Maximum absolute move (bp)` = maximum_absolute_change_bp
+), "yield_responses.md")
+
 # Fingerprint the outputs, allowing later changes to be detected.
 output_files <- c(
   "daily_yields_with_events.csv", "policy_events_rvest.csv",
   "macro_conditions.csv", "announcement_day_yield_changes.csv",
   "yield_response_summary.csv", "daily_yields_with_events.png",
   "inflation_unemployment_with_events.png", "announcement_day_yield_changes.png",
-  "data_checks.csv", "source_log.csv"
+  "data_checks.csv", "source_log.csv", "policy_schedule.md",
+  "macro_milestones.md", "yield_levels.md", "yield_responses.md"
 )
 output_manifest <- tibble(
   file = paste0("results/", output_files),
@@ -689,23 +604,5 @@ output_manifest <- tibble(
   }, character(1))
 )
 write.csv(output_manifest, file.path(result_dir, "output_manifest.csv"), row.names = FALSE)
-writeLines(capture.output(sessionInfo()), file.path(result_dir, "session_info.txt"))
-
-knitr::kable(tibble(
-  check = c("Daily yield observations", "Monthly macro observations",
-            "Policy changes", "Source documents"),
-  result = c(nrow(yields), nrow(macro), nrow(events), nrow(source_register))
-))
-
-#' 
-#' # What did we learn?
-#' 
-#' `read_html()` reads each public document, `html_table()` extracts structured tables, and `html_elements()` with `html_text2()` extracts named XML fields and announcement text. The resulting datasets connect monthly macroeconomic conditions, daily Treasury yields, and verified policy dates.
-#' 
-#' # Interpretation
-#' 
-#' The evidence does not support the claim that every hike immediately lowers inflation or that every cut immediately strengthens employment. The decisions are cumulative, their effects arrive with a lag, and markets often anticipate them. The stronger conclusion is that inflation declined during the restrictive phase without a contemporaneous surge in unemployment, while Treasury repricing was most pronounced at shorter maturities.
-#' 
-#' # Actionable takeaway
-#' 
-#' Investors should not treat a hike or cut as an automatic signal for all Treasury maturities. The 2-year yield was the most sensitive to announcement-day repricing, so front-end exposure requires particular attention to incoming inflation, employment, and policy-expectation data. Longer yields moved less on these announcement days, but long-duration bond prices remain highly sensitive to each basis-point move. Maturity choice should therefore reflect both expected policy surprises and price duration, rather than the direction of the announced rate change alone.
+writeLines(trimws(capture.output(sessionInfo()), which = "right"),
+           file.path(result_dir, "session_info.txt"))

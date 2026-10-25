@@ -1,0 +1,10 @@
+# R packages required by code/Blog2_Treasury_Yields.R
+rvest
+xml2
+dplyr
+tidyr
+stringr
+lubridate
+ggplot2
+digest
+knitr
